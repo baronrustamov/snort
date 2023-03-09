@@ -170,7 +170,7 @@ export function normalizeReaction(content: string) {
 /**
  * Get reactions to a specific event (#e + kind filter)
  */
-export function getReactions(notes: TaggedRawEvent[], id: u256, kind = EventKind.Reaction) {
+export function getReactions(notes: readonly TaggedRawEvent[], id: u256, kind = EventKind.Reaction) {
   return notes?.filter(a => a.kind === kind && a.tags.some(a => a[0] === "e" && a[1] === id)) || [];
 }
 
@@ -295,7 +295,7 @@ export function randomSample<T>(coll: T[], size: number) {
   return random.sort(() => (Math.random() >= 0.5 ? 1 : -1)).slice(0, size);
 }
 
-export function getNewest(rawNotes: TaggedRawEvent[]) {
+export function getNewest(rawNotes: readonly TaggedRawEvent[]) {
   const notes = [...rawNotes];
   notes.sort((a, b) => b.created_at - a.created_at);
   if (notes.length > 0) {

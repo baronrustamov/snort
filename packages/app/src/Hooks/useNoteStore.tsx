@@ -1,17 +1,26 @@
 import { useSyncExternalStore } from "react";
-import { FlatNoteStore, NoteStore, NoteStoreSnapshot } from "System/NoteCollection";
+import { NoteStore, StoreSnapshot } from "System/NoteCollection";
 
-const useNoteStore = (store: NoteStore) => {
-  const subscribe = (store: NoteStore, onChanged: () => void) => {
-    if (store instanceof FlatNoteStore) {
-      return store.hook(onChanged);
-    }
-    throw new Error("Cannot hook this kind of NoteStore");
+const useNoteStore = <TStore extends NoteStore, TSnapshot = ReturnType<TStore["getSnapshotData"]>>(
+  store: Readonly<TStore>,
+  debounced?: number
+) => {
+  const subscribe = (store: Readonly<TStore>, onChanged: () => void) => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    return store.hook(() => {
+      if (!t) {
+        t = setTimeout(() => {
+          clearTimeout(t);
+          t = undefined;
+          onChanged();
+        }, debounced ?? 300);
+      }
+    });
   };
-  const getState = (store: NoteStore) => {
-    return store.getSnapshot();
+  const getState = (store: Readonly<TStore>): StoreSnapshot<TSnapshot> => {
+    return store.snapshot as StoreSnapshot<TSnapshot>;
   };
-  return useSyncExternalStore<NoteStoreSnapshot>(
+  return useSyncExternalStore<StoreSnapshot<TSnapshot>>(
     v => subscribe(store, v),
     () => getState(store)
   );

@@ -5,7 +5,7 @@ import { useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router-dom";
 import { NostrPrefix } from "@snort/nostr";
 
-import { unwrap } from "Util";
+import { getReactions, unwrap } from "Util";
 import { formatShort } from "Number";
 import Note from "Element/Note";
 import Bookmarks from "Element/Bookmarks";
@@ -80,8 +80,8 @@ export default function ProfilePage() {
     user?.website && !user.website.startsWith("http") ? "https://" + user.website : user?.website || "";
   // feeds
   const { blocked } = useModeration();
-  const { notes: pinned, related: pinRelated } = usePinnedFeed(id);
-  const { notes: bookmarks, related: bookmarkRelated } = useBookmarkFeed(id);
+  const pinned = usePinnedFeed(id);
+  const bookmarks = useBookmarkFeed(id);
   const relays = useRelaysFeed(id);
   const zaps = useZapsFeed(id);
   const zapsTotal = zaps.reduce((acc, z) => acc + z.amount, 0);
@@ -189,7 +189,7 @@ export default function ProfilePage() {
                   <Note
                     key={`pinned-${n.id}`}
                     data={n}
-                    related={pinRelated}
+                    related={getReactions(pinned, n.id)}
                     options={{ showTime: false, showPinned: true, canUnpin: id === loginPubKey }}
                   />
                 );
@@ -238,7 +238,7 @@ export default function ProfilePage() {
         return <RelaysMetadata relays={relays} />;
       }
       case BOOKMARKS: {
-        return <Bookmarks pubkey={id} bookmarks={bookmarks} related={bookmarkRelated} />;
+        return <Bookmarks pubkey={id} bookmarks={bookmarks} related={bookmarks} />;
       }
     }
   }

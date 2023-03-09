@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import { useSelector } from "react-redux";
-import { HexKey, Lists, EventKind, Subscriptions } from "@snort/nostr";
+import { HexKey, Lists, EventKind } from "@snort/nostr";
 
-import { getNewest } from "Util";
-import useSubscription from "Feed/Subscription";
 import { RootState } from "State/Store";
+import { FlatNoteStore, ParameterizedReplaceableNoteStore, RequestBuilder } from "System";
+import useRequestBuilder from "Hooks/useRequestBuilder";
 
 export default function useNotelistSubscription(pubkey: HexKey | undefined, l: Lists, defaultIds: HexKey[]) {
   const { preferences, publicKey } = useSelector((s: RootState) => s.login);
@@ -12,51 +12,35 @@ export default function useNotelistSubscription(pubkey: HexKey | undefined, l: L
 
   const sub = useMemo(() => {
     if (isMe || !pubkey) return null;
-    const sub = new Subscriptions();
-    sub.Id = `note-list-${l}:${pubkey.slice(0, 12)}`;
-    sub.Kinds = new Set([EventKind.NoteLists]);
-    sub.Authors = new Set([pubkey]);
-    sub.DTags = new Set([l]);
-    sub.Limit = 1;
-    return sub;
+    const rb = new RequestBuilder(`note-list-${l}:${pubkey.slice(0, 12)}`);
+    rb.withFilter().kinds([EventKind.NoteLists]).authors([pubkey]).tag("d", [l]).limit(1);
+
+    return rb;
   }, [pubkey]);
 
-  const { store } = useSubscription(sub, { leaveOpen: true, cache: true });
+  const listStore = useRequestBuilder<ParameterizedReplaceableNoteStore>(ParameterizedReplaceableNoteStore, sub);
   const etags = useMemo(() => {
     if (isMe) return defaultIds;
-    const newest = getNewest(store.notes);
-    if (newest) {
-      const { tags } = newest;
-      return tags.filter(t => t[0] === "e").map(t => t[1]);
+    // there should only be a single event here because we only load 1 pubkey
+    if (listStore.data && listStore.data.length > 0) {
+      return listStore.data[0].tags.filter(a => a[0] === "e").map(a => a[1]);
     }
     return [];
-  }, [store.notes, isMe, defaultIds]);
+  }, [listStore.data, isMe, defaultIds]);
 
   const esub = useMemo(() => {
     if (!pubkey) return null;
-    const s = new Subscriptions();
-    s.Id = `${l}-notes:${pubkey.slice(0, 12)}`;
-    s.Kinds = new Set([EventKind.TextNote]);
-    s.Ids = new Set(etags);
-    return s;
-  }, [etags, pubkey]);
-
-  const subRelated = useMemo(() => {
-    let sub: Subscriptions | undefined;
+    const s = new RequestBuilder(`${l}-notes:${pubkey.slice(0, 12)}`);
+    s.withFilter().kinds([EventKind.TextNote]).ids(etags);
     if (etags.length > 0 && preferences.enableReactions) {
-      sub = new Subscriptions();
-      sub.Id = `${l}-related`;
-      sub.Kinds = new Set([EventKind.Reaction, EventKind.Repost, EventKind.Deletion, EventKind.ZapReceipt]);
-      sub.ETags = new Set(etags);
+      s.withFilter()
+        .kinds([EventKind.Reaction, EventKind.Repost, EventKind.Deletion, EventKind.ZapReceipt])
+        .tag("e", etags);
     }
-    return sub ?? null;
-  }, [etags, preferences]);
+    return s;
+  }, [etags, pubkey, preferences]);
 
-  const mainSub = useSubscription(esub, { leaveOpen: true, cache: true });
-  const relatedSub = useSubscription(subRelated, { leaveOpen: true, cache: true });
+  const store = useRequestBuilder<FlatNoteStore>(FlatNoteStore, esub);
 
-  const notes = mainSub.store.notes.filter(e => etags.includes(e.id));
-  const related = relatedSub.store.notes;
-
-  return { notes, related };
+  return store.data ?? [];
 }

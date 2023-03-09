@@ -1,22 +1,22 @@
 import { useMemo } from "react";
-import { HexKey, FullRelaySettings, TaggedRawEvent, RelaySettings, EventKind, Subscriptions } from "@snort/nostr";
-import useSubscription from "./Subscription";
-import { getLatestByPubkey, sanitizeRelayUrl } from "../Util";
+import { HexKey, FullRelaySettings, TaggedRawEvent, RelaySettings, EventKind } from "@snort/nostr";
+
+import { sanitizeRelayUrl } from "Util";
+import { PubkeyReplaceableNoteStore, RequestBuilder } from "System";
+import useRequestBuilder from "Hooks/useRequestBuilder";
 
 type UserRelayMap = Record<HexKey, Array<FullRelaySettings>>;
 
 export default function useRelaysFeedFollows(pubkeys: HexKey[]): UserRelayMap {
   const sub = useMemo(() => {
-    const x = new Subscriptions();
-    x.Id = `relays:follows`;
-    x.Kinds = new Set([EventKind.Relays, EventKind.ContactList]);
-    x.Authors = new Set(pubkeys);
-    return x;
+    const b = new RequestBuilder(`relays:follows`);
+    b.withFilter().authors(pubkeys).kinds([EventKind.Relays, EventKind.ContactList]);
+    return b;
   }, [pubkeys]);
 
-  function mapFromRelays(notes: Map<HexKey, TaggedRawEvent>): UserRelayMap {
+  function mapFromRelays(notes: Array<TaggedRawEvent>): UserRelayMap {
     return Object.fromEntries(
-      [...notes.values()].map(ev => {
+      notes.map(ev => {
         return [
           ev.pubkey,
           ev.tags
@@ -35,36 +35,39 @@ export default function useRelaysFeedFollows(pubkeys: HexKey[]): UserRelayMap {
     );
   }
 
-  function mapFromContactList(notes: Map<HexKey, TaggedRawEvent>): UserRelayMap {
+  function mapFromContactList(notes: Array<TaggedRawEvent>): UserRelayMap {
     return Object.fromEntries(
-      [...notes.values()].map(ev => {
+      notes.map(ev => {
         if (ev.content !== "" && ev.content !== "{}" && ev.content.startsWith("{") && ev.content.endsWith("}")) {
-          const relays: Record<string, RelaySettings> = JSON.parse(ev.content);
-          return [
-            ev.pubkey,
-            Object.entries(relays)
-              .map(([k, v]) => {
-                return {
-                  url: sanitizeRelayUrl(k),
-                  settings: v,
-                } as FullRelaySettings;
-              })
-              .filter(a => a.url !== undefined),
-          ];
-        } else {
-          return [ev.pubkey, []];
+          try {
+            const relays: Record<string, RelaySettings> = JSON.parse(ev.content);
+            return [
+              ev.pubkey,
+              Object.entries(relays)
+                .map(([k, v]) => {
+                  return {
+                    url: sanitizeRelayUrl(k),
+                    settings: v,
+                  } as FullRelaySettings;
+                })
+                .filter(a => a.url !== undefined),
+            ];
+          } catch {
+            // ignored
+          }
         }
+        return [ev.pubkey, []];
       })
     );
   }
 
-  const relays = useSubscription(sub, { leaveOpen: true, cache: true });
-  const notesRelays = getLatestByPubkey(relays.store.notes.filter(a => a.kind === EventKind.Relays));
-  const notesContactLists = getLatestByPubkey(relays.store.notes.filter(a => a.kind === EventKind.ContactList));
+  const relays = useRequestBuilder<PubkeyReplaceableNoteStore>(PubkeyReplaceableNoteStore, sub);
+  const notesRelays = relays.data?.filter(a => a.kind === EventKind.Relays) ?? [];
+  const notesContactLists = relays.data?.filter(a => a.kind === EventKind.ContactList) ?? [];
   return useMemo(() => {
     return {
       ...mapFromContactList(notesContactLists),
       ...mapFromRelays(notesRelays),
     } as UserRelayMap;
-  }, [relays.store]);
+  }, [relays]);
 }

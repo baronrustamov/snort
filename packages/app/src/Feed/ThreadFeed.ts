@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { u256, EventKind, TaggedRawEvent } from "@snort/nostr";
+import { u256, EventKind } from "@snort/nostr";
 
 import { RootState } from "State/Store";
 import { UserPreferences } from "State/Login";
 import { appendDedupe, debounce } from "Util";
-import { RequestBuilder } from "System/RequestBuilder";
-import { System } from "System";
-import useNoteStore from "Hooks/useNoteStore";
+import { FlatNoteStore, RequestBuilder } from "System";
+import useRequestBuilder from "Hooks/useRequestBuilder";
 
 export default function useThreadFeed(id: u256) {
   const [trackingEvents, setTrackingEvent] = useState<u256[]>([id]);
@@ -28,13 +27,12 @@ export default function useThreadFeed(id: u256) {
     return sub;
   }, [trackingEvents, pref, id]);
 
-  const q = System.Query(sub);
-  const store = useNoteStore(q) as Array<TaggedRawEvent>;
+  const store = useRequestBuilder<FlatNoteStore>(FlatNoteStore, sub);
 
   useEffect(() => {
-    if (store) {
+    if (store.data) {
       return debounce(500, () => {
-        const mainNotes = store.filter(a => a.kind === EventKind.TextNote);
+        const mainNotes = store.data?.filter(a => a.kind === EventKind.TextNote) ?? [];
 
         const eTags = mainNotes
           .filter(a => a.kind === EventKind.TextNote)
@@ -45,10 +43,6 @@ export default function useThreadFeed(id: u256) {
       });
     }
   }, [store]);
-
-  useEffect(() => {
-    return () => System.CancelQuery(sub.id);
-  }, []);
 
   return store;
 }

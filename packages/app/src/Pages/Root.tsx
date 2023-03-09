@@ -1,7 +1,7 @@
 import "./Root.css";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { Link, Outlet, RouteObject, useNavigate, useParams } from "react-router-dom";
+import { Link, Outlet, RouteObject, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useIntl, FormattedMessage } from "react-intl";
 
 import Tabs, { Tab } from "Element/Tabs";
@@ -19,9 +19,9 @@ interface RelayOption {
 }
 
 export default function RootPage() {
-  const params = useParams();
   const { formatMessage } = useIntl();
   const navigate = useNavigate();
+  const location = useLocation();
   const { publicKey: pubKey, tags, preferences } = useSelector((s: RootState) => s.login);
 
   const RootTab: Record<string, Tab> = {
@@ -41,8 +41,9 @@ export default function RootPage() {
       data: "/global",
     },
   };
-  const tab = (() => {
-    switch (params.tab ?? preferences.defaultRootTab) {
+  const tab = useMemo(() => {
+    const pTab = location.pathname.split("/").slice(-1)[0];
+    switch (pTab) {
       case "conversations": {
         return RootTab.PostsAndReplies;
       }
@@ -53,7 +54,13 @@ export default function RootPage() {
         return RootTab.Posts;
       }
     }
-  })();
+  }, [location]);
+
+  useEffect(() => {
+    if (location.pathname === "/") {
+      navigate(unwrap(preferences.defaultRootTab ?? tab.data));
+    }
+  }, [location]);
 
   const tagTabs = tags.map((t, idx) => {
     return { text: `#${t}`, value: idx + 3, data: `/tag/${t}` };

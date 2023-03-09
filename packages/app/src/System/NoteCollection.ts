@@ -1,25 +1,55 @@
 import { TaggedRawEvent, u256 } from "@snort/nostr";
-import { unwrap } from "Util";
+import { findTag } from "Util";
 
-export type NoteStoreSnapshot = Readonly<Array<TaggedRawEvent>> | Readonly<TaggedRawEvent> | undefined;
+export interface StoreSnapshot<TSnapshot> {
+  data: TSnapshot | undefined;
+  store: NoteStore;
+}
+
+export type NoteStoreSnapshotData = Readonly<Array<TaggedRawEvent>> | Readonly<TaggedRawEvent>;
 export type NoteStoreHook = () => void;
 export type NoteStoreHookRelease = () => void;
+export type OnEventCallback = (e: Readonly<Array<TaggedRawEvent>>) => void;
+export type OnEventCallbackRelease = () => void;
 
 /**
  * Generic note store interface
  */
-export interface NoteStore {
-  addNote(ev: TaggedRawEvent): void;
-  clear(): void;
-  hook(cb: NoteStoreHook): NoteStoreHookRelease;
-  getSnapshot(): NoteStoreSnapshot;
+export abstract class NoteStore {
+  abstract add(ev: Readonly<TaggedRawEvent> | Readonly<Array<TaggedRawEvent>>): void;
+  abstract eose(b: boolean): void;
+  abstract clear(): void;
+  abstract hook(cb: NoteStoreHook): NoteStoreHookRelease;
+  abstract getSnapshotData(): NoteStoreSnapshotData | undefined;
+  abstract onEvent(cb: OnEventCallback): OnEventCallbackRelease;
+
+  abstract didEose(): boolean;
+  abstract get snapshot(): StoreSnapshot<NoteStoreSnapshotData>;
 }
 
-export abstract class HookedNoteStore implements NoteStore {
+export abstract class HookedNoteStore<TSnapshot extends NoteStoreSnapshotData> implements NoteStore {
   #hooks: Array<NoteStoreHook> = [];
-  #snapshot: NoteStoreSnapshot;
+  #eventHooks: Array<OnEventCallback> = [];
+  #eose = false;
+  #storeSnapshot: StoreSnapshot<TSnapshot> = {
+    store: this,
+    data: undefined,
+  };
 
-  abstract addNote(ev: TaggedRawEvent): void;
+  get snapshot() {
+    return this.#storeSnapshot;
+  }
+
+  eose(b: boolean) {
+    this.#eose = b;
+    this.onChange([]);
+  }
+
+  didEose() {
+    return this.#eose;
+  }
+
+  abstract add(ev: TaggedRawEvent | Array<TaggedRawEvent>): void;
   abstract clear(): void;
 
   hook(cb: NoteStoreHook): NoteStoreHookRelease {
@@ -30,15 +60,32 @@ export abstract class HookedNoteStore implements NoteStore {
     };
   }
 
-  getSnapshot(): NoteStoreSnapshot {
-    return this.#snapshot;
+  getSnapshotData() {
+    return this.#storeSnapshot.data;
   }
 
-  protected abstract takeSnapshot(): NoteStoreSnapshot;
-  protected onChange(): void {
-    this.#snapshot = this.takeSnapshot();
+  onEvent(cb: OnEventCallback): OnEventCallbackRelease {
+    this.#eventHooks.push(cb);
+    return () => {
+      const idx = this.#eventHooks.findIndex(a => a === cb);
+      this.#eventHooks.splice(idx, 1);
+    };
+  }
+
+  protected abstract takeSnapshot(): TSnapshot | undefined;
+
+  protected onChange(changes: Readonly<Array<TaggedRawEvent>>): void {
+    this.#storeSnapshot = {
+      data: this.takeSnapshot(),
+      store: this,
+    };
     for (const hk of this.#hooks) {
       hk();
+    }
+    if (changes.length > 0) {
+      for (const hkE of this.#eventHooks) {
+        hkE(changes);
+      }
     }
   }
 }
@@ -49,11 +96,11 @@ export type NodeBranch = TaggedRawEvent | Node;
 /**
  * Tree note store
  */
-export class NostrEventTree extends HookedNoteStore {
+export class NostrEventTree extends HookedNoteStore<TaggedRawEvent> {
   base: Node = new Map();
   #nodeIndex: Map<u256, Node> = new Map();
 
-  addNote(ev: TaggedRawEvent) {
+  add(ev: TaggedRawEvent | Array<TaggedRawEvent>) {
     throw new Error("Not implemented");
   }
 
@@ -61,7 +108,7 @@ export class NostrEventTree extends HookedNoteStore {
     throw new Error("Method not implemented.");
   }
 
-  takeSnapshot(): readonly TaggedRawEvent[] {
+  takeSnapshot(): TaggedRawEvent {
     throw new Error("Method not implemented.");
   }
 }
@@ -69,51 +116,125 @@ export class NostrEventTree extends HookedNoteStore {
 /**
  * A simple flat container of events with no duplicates
  */
-export class FlatNoteStore extends HookedNoteStore {
+export class FlatNoteStore extends HookedNoteStore<Readonly<Array<TaggedRawEvent>>> {
   #events: Array<TaggedRawEvent> = [];
   #ids: Set<u256> = new Set();
 
-  addNote(ev: TaggedRawEvent) {
-    if (!this.#ids.has(ev.id)) {
-      this.#events.push(ev);
-      this.#ids.add(ev.id);
-      this.onChange();
+  add(ev: TaggedRawEvent | Array<TaggedRawEvent>) {
+    ev = Array.isArray(ev) ? ev : [ev];
+    const changes: Array<TaggedRawEvent> = [];
+    ev.forEach(a => {
+      if (!this.#ids.has(a.id)) {
+        this.#events.push(a);
+        this.#ids.add(a.id);
+        changes.push(a);
+      }
+    });
+
+    if (changes.length > 0) {
+      this.onChange(changes);
     }
   }
 
   clear() {
     this.#events = [];
     this.#ids.clear();
-    this.onChange();
+    this.onChange([]);
   }
 
-  takeSnapshot(): NoteStoreSnapshot {
-    return [...this.#events];
+  takeSnapshot() {
+    return this.#events;
+  }
+}
+
+/**
+ * A note store that holds a single replaceable event for a given user defined key generator function
+ */
+export class KeyedReplaceableNoteStore extends HookedNoteStore<Readonly<Array<TaggedRawEvent>>> {
+  #keyFn: (ev: TaggedRawEvent) => string;
+  #events: Map<string, TaggedRawEvent> = new Map();
+
+  constructor(fn: (ev: TaggedRawEvent) => string) {
+    super();
+    this.#keyFn = fn;
+  }
+
+  add(ev: TaggedRawEvent | Array<TaggedRawEvent>) {
+    ev = Array.isArray(ev) ? ev : [ev];
+    const changes: Array<TaggedRawEvent> = [];
+    ev.forEach(a => {
+      const keyOnEvent = this.#keyFn(a);
+      const existingCreated = this.#events.get(keyOnEvent)?.created_at ?? 0;
+      if (a.created_at > existingCreated) {
+        this.#events.set(keyOnEvent, a);
+        changes.push(a);
+      }
+    });
+    if (changes.length > 0) {
+      this.onChange(changes);
+    }
+  }
+
+  clear() {
+    this.#events.clear();
+    this.onChange([]);
+  }
+
+  takeSnapshot() {
+    return [...this.#events.values()];
   }
 }
 
 /**
  * A note store that holds a single replaceable event
  */
-export class ReplaceableNoteStore extends HookedNoteStore {
+export class ReplaceableNoteStore extends HookedNoteStore<Readonly<TaggedRawEvent>> {
   #event?: TaggedRawEvent;
 
-  addNote(ev: TaggedRawEvent) {
-    const existingCreated = this.#event?.created_at ?? 0;
-    if (ev.created_at > existingCreated) {
-      this.#event = ev;
-      this.onChange();
+  add(ev: TaggedRawEvent | Array<TaggedRawEvent>) {
+    ev = Array.isArray(ev) ? ev : [ev];
+    const changes: Array<TaggedRawEvent> = [];
+    ev.forEach(a => {
+      const existingCreated = this.#event?.created_at ?? 0;
+      if (a.created_at > existingCreated) {
+        this.#event = a;
+        changes.push(a);
+      }
+    });
+    if (changes.length > 0) {
+      this.onChange(changes);
     }
   }
 
   clear() {
     this.#event = undefined;
-    this.onChange();
+    this.onChange([]);
   }
 
-  takeSnapshot(): NoteStoreSnapshot {
+  takeSnapshot() {
     if (this.#event) {
       return Object.freeze({ ...this.#event });
     }
+  }
+}
+
+/**
+ * A note store that holds a single replaceable event per pubkey
+ */
+export class PubkeyReplaceableNoteStore extends KeyedReplaceableNoteStore {
+  constructor() {
+    super(e => e.pubkey);
+  }
+}
+
+/**
+ * A note store that holds a single replaceable event per "pubkey-dtag"
+ */
+export class ParameterizedReplaceableNoteStore extends KeyedReplaceableNoteStore {
+  constructor() {
+    super(ev => {
+      const dTag = findTag(ev, "d");
+      return `${ev.pubkey}-${dTag}`;
+    });
   }
 }

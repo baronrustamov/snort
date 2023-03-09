@@ -1,55 +1,24 @@
-import {
-  AuthHandler,
-  HexKey,
-  TaggedRawEvent,
-  Event as NEvent,
-  EventKind,
-  RelaySettings,
-  Connection,
-  Subscriptions,
-  RawReqFilter,
-} from "@snort/nostr";
+import { AuthHandler, TaggedRawEvent, Event as NEvent, RelaySettings, Connection, RawReqFilter } from "@snort/nostr";
 
-import { ProfileCacheExpire } from "Const";
 import { sanitizeRelayUrl, unixNowMs, unwrap } from "Util";
-import { mapEventToProfile, MetadataCache } from "State/Users";
-import { UserCache } from "State/Users/UserCache";
 import { RequestBuilder } from "./RequestBuilder";
-import { FlatNoteStore, NoteStore } from "./NoteCollection";
+import {
+  FlatNoteStore,
+  NoteStore,
+  PubkeyReplaceableNoteStore,
+  ParameterizedReplaceableNoteStore,
+} from "./NoteCollection";
 import { diffFilters } from "./RequestSplitter";
+import { Query } from "./Query";
 
-interface QueryRequest {
-  filters: Array<RawReqFilter>;
-  started: number;
-  finished: number;
-}
-/**
- * Active or queued query on the system
- */
-interface Query {
-  id: string;
-  request: QueryRequest;
-
-  /**
-   * Sub-Queries which are connected to this subscription
-   */
-  subQueries: Array<Query>;
-
-  /**
-   * Which relays this query has already been executed on
-   */
-  sentToRelays: Array<string>;
-
-  /**
-   * Which relays we want to send this query on
-   */
-  shouldSendTo: Array<string>;
-
-  /**
-   * If this query should be closed
-   */
-  closeRequested: boolean;
-}
+export {
+  NoteStore,
+  RequestBuilder,
+  FlatNoteStore,
+  PubkeyReplaceableNoteStore,
+  ParameterizedReplaceableNoteStore,
+  Query,
+};
 
 /**
  * Manages nostr content retrieval system
@@ -59,11 +28,6 @@ export class NostrSystem {
    * All currently connected websockets
    */
   Sockets: Map<string, Connection>;
-
-  /**
-   * All active subscriptions
-   */
-  Subscriptions: Map<string, Subscriptions>;
 
   /**
    * All active queries
@@ -76,26 +40,12 @@ export class NostrSystem {
   Feeds: Map<string, NoteStore> = new Map();
 
   /**
-   * Pending subscriptions to send when sockets become open
-   */
-  PendingSubscriptions: Subscriptions[];
-
-  /**
-   * List of pubkeys to fetch metadata for
-   */
-  WantsMetadata: Set<HexKey>;
-
-  /**
    * Handler function for NIP-42
    */
   HandleAuth?: AuthHandler;
 
   constructor() {
     this.Sockets = new Map();
-    this.Subscriptions = new Map();
-    this.PendingSubscriptions = [];
-    this.WantsMetadata = new Set();
-    this.#FetchMetadata();
   }
 
   /**
@@ -109,10 +59,14 @@ export class NostrSystem {
         this.Sockets.set(addr, c);
         c.OnEvent = (s, e) => this.OnEvent(s, e);
         c.OnEose = s => this.OnEndOfStoredEvents(c, s);
+        c.OnConnected = () => {
+          for (const [, q] of this.Queries) {
+            if (!q.closing) {
+              c._SendJson(["REQ", q.id, ...q.request.filters]);
+            }
+          }
+        };
         await c.Connect();
-        for (const [, s] of this.Subscriptions) {
-          c.AddSubscription(s);
-        }
       } else {
         // update settings if already connected
         unwrap(this.Sockets.get(addr)).Settings = options;
@@ -126,6 +80,10 @@ export class NostrSystem {
     const q = this.GetQuery(sub);
     if (q) {
       q.request.finished = unixNowMs();
+      const f = this.Feeds.get(sub);
+      if (f) {
+        f.eose(true);
+      }
     }
     c._SendJson(["CLOSE", sub]);
   }
@@ -133,7 +91,7 @@ export class NostrSystem {
   OnEvent(sub: string, ev: TaggedRawEvent) {
     const feed = this.GetFeed(sub);
     if (feed) {
-      feed.addNote(ev);
+      feed.add(ev);
     }
   }
 
@@ -167,10 +125,14 @@ export class NostrSystem {
         this.Sockets.set(addr, c);
         c.OnEvent = (s, e) => this.OnEvent(s, e);
         c.OnEose = s => this.OnEndOfStoredEvents(c, s);
+        c.OnConnected = () => {
+          for (const [, q] of this.Queries) {
+            if (q) {
+              c._SendJson(["REQ", q.id, ...q.request.filters]);
+            }
+          }
+        };
         await c.Connect();
-        for (const [, s] of this.Subscriptions) {
-          c.AddSubscription(s);
-        }
         return c;
       }
     } catch (e) {
@@ -189,11 +151,7 @@ export class NostrSystem {
     }
   }
 
-  AddSubscriptionToRelay(sub: Subscriptions, relay: string) {
-    this.Sockets.get(relay)?.AddSubscription(sub);
-  }
-
-  Query(req: RequestBuilder): Readonly<NoteStore> {
+  Query<T extends NoteStore>(type: { new (): T }, req: RequestBuilder | null): Readonly<T> {
     /**
      * ## Notes
      *
@@ -218,45 +176,42 @@ export class NostrSystem {
      * pending filters for the same subscription
      */
 
+    if (!req) return new type();
+
     const filters = req.build();
     if (this.Queries.has(req.id)) {
       const q = unwrap(this.Queries.get(req.id));
+      q.unCancel();
+
       const diff = diffFilters(q.request.filters, filters);
-      if (JSON.stringify(filters) === JSON.stringify(diff)) {
-        return unwrap(this.Feeds.get(req.id));
+      if (!diff.changed) {
+        return unwrap(this.Feeds.get(req.id)) as Readonly<T>;
       } else {
-        const subQ = {
-          id: `${q.id}-${q.subQueries.length + 1}`,
-          request: {
-            filters: diff,
-            started: unixNowMs(),
-          },
-        } as Query;
+        const subQ = new Query(`${q.id}-${q.subQueries.length + 1}`, {
+          filters: diff.filters,
+          started: unixNowMs(),
+        });
         q.subQueries.push(subQ);
         q.request.filters = filters;
+        const f = unwrap(this.Feeds.get(req.id));
+        f.eose(false);
         this.SendQuery(subQ.id, subQ.request.filters);
-        return unwrap(this.Feeds.get(req.id));
+        return f as Readonly<T>;
       }
     } else {
-      return this.AddQuery(req.id, filters);
+      return this.AddQuery<T>(type, req.id, filters);
     }
   }
 
-  AddQuery(id: string, filters: Array<RawReqFilter>): NoteStore {
-    const q = {
-      id: id,
-      request: {
-        filters: filters,
-        started: unixNowMs(),
-        finished: 0,
-      },
-      subQueries: [],
-      sentToRelays: [],
-      shouldSendTo: [],
-      closeRequested: false,
-    } as Query;
+  AddQuery<T extends NoteStore>(type: { new (): T }, id: string, filters: Array<RawReqFilter>): T {
+    const q = new Query(id, {
+      filters: filters,
+      started: unixNowMs(),
+      finished: 0,
+    });
+
     this.Queries.set(id, q);
-    const store = new FlatNoteStore();
+    const store = new type();
     this.Feeds.set(id, store);
 
     this.SendQuery(q.id, q.request.filters);
@@ -266,7 +221,8 @@ export class NostrSystem {
   CancelQuery(sub: string) {
     const q = this.Queries.get(sub);
     if (q) {
-      q.closeRequested = true;
+      q.cancel();
+      console.debug("Cancel", q);
     }
   }
 
@@ -274,34 +230,6 @@ export class NostrSystem {
     for (const [, s] of this.Sockets) {
       s._SendJson(["REQ", id, ...filters]);
     }
-  }
-
-  async AddSubscription(sub: Subscriptions) {
-    let noRelays = true;
-    this.Subscriptions.set(sub.Id, sub);
-    for (const [, s] of this.Sockets) {
-      if (s.AddSubscription(sub)) {
-        noRelays = false;
-      }
-    }
-
-    if (noRelays && sub.Relays) {
-      for (const r of sub.Relays) {
-        if (!this.Sockets.has(r) && r) {
-          const c = await this.ConnectEphemeralRelay(r);
-          if (c) {
-            c.AddSubscription(sub);
-          }
-        }
-      }
-    }
-  }
-
-  RemoveSubscription(subId: string) {
-    for (const [, s] of this.Sockets) {
-      s.RemoveSubscription(subId);
-    }
-    this.Subscriptions.delete(subId);
   }
 
   /**
@@ -321,109 +249,6 @@ export class NostrSystem {
     await c.Connect();
     await c.SendAsync(ev);
     c.Close();
-  }
-
-  /**
-   * Request profile metadata for a set of pubkeys
-   */
-  TrackMetadata(pk: HexKey | Array<HexKey>) {
-    for (const p of Array.isArray(pk) ? pk : [pk]) {
-      if (p.length > 0) {
-        this.WantsMetadata.add(p);
-      }
-    }
-  }
-
-  /**
-   * Stop tracking metadata for a set of pubkeys
-   */
-  UntrackMetadata(pk: HexKey | Array<HexKey>) {
-    for (const p of Array.isArray(pk) ? pk : [pk]) {
-      if (p.length > 0) {
-        this.WantsMetadata.delete(p);
-      }
-    }
-  }
-
-  /**
-   * Request/Response pattern
-   */
-  RequestSubscription(sub: Subscriptions, timeout?: number) {
-    return new Promise<TaggedRawEvent[]>(resolve => {
-      const events: TaggedRawEvent[] = [];
-
-      // force timeout returning current results
-      const t = setTimeout(() => {
-        this.RemoveSubscription(sub.Id);
-        resolve(events);
-      }, timeout ?? 10_000);
-
-      const onEventPassthrough = sub.OnEvent;
-      sub.OnEvent = ev => {
-        if (typeof onEventPassthrough === "function") {
-          onEventPassthrough(ev);
-        }
-        if (!events.some(a => a.id === ev.id)) {
-          events.push(ev);
-        } else {
-          const existing = events.find(a => a.id === ev.id);
-          if (existing) {
-            for (const v of ev.relays) {
-              existing.relays.push(v);
-            }
-          }
-        }
-      };
-      sub.OnEnd = c => {
-        c.RemoveSubscription(sub.Id);
-        if (sub.IsFinished()) {
-          clearInterval(t);
-          console.debug(`[${sub.Id}] Finished`);
-          resolve(events);
-        }
-      };
-      this.AddSubscription(sub);
-    });
-  }
-
-  async #FetchMetadata() {
-    const missingFromCache = await UserCache.buffer([...this.WantsMetadata]);
-
-    const expire = unixNowMs() - ProfileCacheExpire;
-    const expired = [...this.WantsMetadata]
-      .filter(a => !missingFromCache.includes(a))
-      .filter(a => (UserCache.get(a)?.loaded ?? 0) < expire);
-    const missing = new Set([...missingFromCache, ...expired]);
-    if (missing.size > 0) {
-      console.debug(`Wants profiles: ${missingFromCache.length} missing, ${expired.length} expired`);
-
-      const sub = new Subscriptions();
-      sub.Id = `profiles:${sub.Id.slice(0, 8)}`;
-      sub.Kinds = new Set([EventKind.SetMetadata]);
-      sub.Authors = missing;
-      sub.Relays = new Set([...this.Sockets.values()].filter(a => !a.Ephemeral).map(a => a.Address));
-      sub.OnEvent = async e => {
-        const profile = mapEventToProfile(e);
-        if (profile) {
-          await UserCache.update(profile);
-        }
-      };
-      const results = await this.RequestSubscription(sub, 5_000);
-      const couldNotFetch = [...missing].filter(a => !results.some(b => b.pubkey === a));
-      if (couldNotFetch.length > 0) {
-        console.debug("No profiles: ", couldNotFetch);
-        const empty = couldNotFetch.map(a =>
-          UserCache.update({
-            pubkey: a,
-            loaded: unixNowMs(),
-            created: 69,
-          } as MetadataCache)
-        );
-        await Promise.all(empty);
-      }
-    }
-
-    setTimeout(() => this.#FetchMetadata(), 500);
   }
 }
 
