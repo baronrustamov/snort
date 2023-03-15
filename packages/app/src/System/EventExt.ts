@@ -1,5 +1,5 @@
 import * as secp from "@noble/secp256k1";
-import { EventKind, HexKey, RawEvent, Tag, u256 } from "@snort/nostr";
+import { EventKind, HexKey, RawEvent, Tag } from "@snort/nostr";
 import base64 from "@protobufjs/base64";
 import { unixNow } from "Util";
 

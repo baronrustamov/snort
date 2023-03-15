@@ -35,7 +35,6 @@ export default function useLoginFeed() {
     privateKey: privKey,
     latestMuted,
     readNotifications,
-    follows,
   } = useSelector((s: RootState) => s.login);
   const { isMuted } = useModeration();
 

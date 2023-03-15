@@ -233,7 +233,7 @@ export class NostrSystem {
         q.request.filters = filters;
         const f = unwrap(this.Feeds.get(req.id));
         f.eose(false);
-        this.SendQuery(subQ, subQ.request.filters);
+        this.SendQuery(subQ);
         this.#changed();
         return f as Readonly<T>;
       }
@@ -256,7 +256,7 @@ export class NostrSystem {
     const store = new type();
     this.Feeds.set(rb.id, store);
 
-    this.SendQuery(q, q.request.filters);
+    this.SendQuery(q);
     this.#changed();
     return store;
   }
@@ -269,7 +269,7 @@ export class NostrSystem {
     }
   }
 
-  SendQuery(q: Query, filters: Array<RawReqFilter>) {
+  SendQuery(q: Query) {
     for (const [, s] of this.Sockets) {
       q.sendToRelay(s);
     }
