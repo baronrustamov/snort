@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { AnyAction, ThunkDispatch } from "@reduxjs/toolkit";
-import { TaggedRawEvent, HexKey, Lists, Event, EventKind } from "@snort/nostr";
+import { TaggedRawEvent, HexKey, Lists, EventKind } from "@snort/nostr";
 
 import { getNewest, getNewestEventTagsByKey, unwrap } from "Util";
 import { makeNotification } from "Notifications";
@@ -21,10 +21,9 @@ import { RootState } from "State/Store";
 import { barrierNip07 } from "Feed/EventPublisher";
 import { getMutedKeys } from "Feed/MuteList";
 import useModeration from "Hooks/useModeration";
-import useRelaysFeedFollows from "Feed/RelaysFeedFollows";
-import { FollowsRelays } from "State/Relays";
 import { FlatNoteStore, RequestBuilder } from "System";
 import useRequestBuilder from "Hooks/useRequestBuilder";
+import { EventExt } from "System/EventExt";
 
 /**
  * Managed loading data for the current logged in user
@@ -183,9 +182,8 @@ export default function useLoginFeed() {
 }
 
 async function decryptBlocked(raw: TaggedRawEvent, pubKey: HexKey, privKey?: HexKey) {
-  const ev = new Event(raw);
   if (pubKey && privKey) {
-    return await ev.DecryptData(raw.content, privKey, pubKey);
+    return await EventExt.decryptData(raw.content, privKey, pubKey);
   } else {
     return await barrierNip07(() => window.nostr.nip04.decrypt(pubKey, raw.content));
   }

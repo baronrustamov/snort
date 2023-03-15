@@ -1,40 +1,38 @@
 import "./NoteReaction.css";
 import { Link } from "react-router-dom";
 import { useMemo } from "react";
+import { EventKind, RawEvent, TaggedRawEvent } from "@snort/nostr";
 
-import { EventKind, Event as NEvent } from "@snort/nostr";
 import Note from "Element/Note";
 import ProfileImage from "Element/ProfileImage";
 import { eventLink, hexToBech32 } from "Util";
 import NoteTime from "Element/NoteTime";
-import { RawEvent, TaggedRawEvent } from "@snort/nostr";
 import useModeration from "Hooks/useModeration";
+import { EventExt } from "System/EventExt";
 
 export interface NoteReactionProps {
-  data?: TaggedRawEvent;
-  ["data-ev"]?: NEvent;
+  data: TaggedRawEvent;
   root?: TaggedRawEvent;
 }
 export default function NoteReaction(props: NoteReactionProps) {
-  const { ["data-ev"]: dataEv, data } = props;
-  const ev = useMemo(() => dataEv || new NEvent(data), [data, dataEv]);
+  const { data: ev } = props;
   const { isMuted } = useModeration();
 
   const refEvent = useMemo(() => {
     if (ev) {
-      const eTags = ev.Tags.filter(a => a.Key === "e");
+      const eTags = ev.tags.filter(a => a[0] === "e");
       if (eTags.length > 0) {
-        return eTags[0].Event;
+        return eTags[0][1];
       }
     }
     return null;
   }, [ev]);
 
   if (
-    ev.Kind !== EventKind.Reaction &&
-    ev.Kind !== EventKind.Repost &&
-    (ev.Kind !== EventKind.TextNote ||
-      ev.Tags.every((a, i) => a.Event !== refEvent || a.Marker !== "mention" || ev.Content !== `#[${i}]`))
+    ev.kind !== EventKind.Reaction &&
+    ev.kind !== EventKind.Repost &&
+    (ev.kind !== EventKind.TextNote ||
+      ev.tags.every((a, i) => a[1] !== refEvent || a[3] !== "mention" || ev.content !== `#[${i}]`))
   ) {
     return null;
   }
@@ -43,9 +41,9 @@ export default function NoteReaction(props: NoteReactionProps) {
    * Some clients embed the reposted note in the content
    */
   function extractRoot() {
-    if (ev?.Kind === EventKind.Repost && ev.Content.length > 0 && ev.Content !== "#[0]") {
+    if (ev?.kind === EventKind.Repost && ev.content.length > 0 && ev.content !== "#[0]") {
       try {
-        const r: RawEvent = JSON.parse(ev.Content);
+        const r: RawEvent = JSON.parse(ev.content);
         return r as TaggedRawEvent;
       } catch (e) {
         console.error("Could not load reposted content", e);
@@ -58,16 +56,16 @@ export default function NoteReaction(props: NoteReactionProps) {
   const isOpMuted = root && isMuted(root.pubkey);
   const shouldNotBeRendered = isOpMuted || root?.kind !== EventKind.TextNote;
   const opt = {
-    showHeader: ev?.Kind === EventKind.Repost || ev?.Kind === EventKind.TextNote,
+    showHeader: ev?.kind === EventKind.Repost || ev?.kind === EventKind.TextNote,
     showFooter: false,
   };
 
   return shouldNotBeRendered ? null : (
     <div className="reaction">
       <div className="header flex">
-        <ProfileImage pubkey={ev.RootPubKey} />
+        <ProfileImage pubkey={EventExt.getRootPubKey(ev)} />
         <div className="info">
-          <NoteTime from={ev.CreatedAt * 1000} />
+          <NoteTime from={ev.created_at * 1000} />
         </div>
       </div>
       {root ? <Note data={root} options={opt} related={[]} /> : null}

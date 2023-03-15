@@ -1,4 +1,4 @@
-import { AuthHandler, TaggedRawEvent, Event as NEvent, RelaySettings, Connection, RawReqFilter } from "@snort/nostr";
+import { AuthHandler, TaggedRawEvent, RelaySettings, Connection, RawReqFilter, RawEvent } from "@snort/nostr";
 
 import { sanitizeRelayUrl, unixNowMs, unwrap } from "Util";
 import { RequestBuilder } from "./RequestBuilder";
@@ -278,7 +278,7 @@ export class NostrSystem {
   /**
    * Send events to writable relays
    */
-  BroadcastEvent(ev: NEvent) {
+  BroadcastEvent(ev: RawEvent) {
     for (const [, s] of this.Sockets) {
       s.SendEvent(ev);
     }
@@ -287,7 +287,7 @@ export class NostrSystem {
   /**
    * Write an event to a relay then disconnect
    */
-  async WriteOnceToRelay(address: string, ev: NEvent) {
+  async WriteOnceToRelay(address: string, ev: RawEvent) {
     const c = new Connection(address, { write: true, read: false }, this.HandleAuth, true);
     await c.Connect();
     await c.SendAsync(ev);

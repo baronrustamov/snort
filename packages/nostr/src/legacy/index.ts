@@ -1,7 +1,6 @@
 export * from "./Connection";
 export { default as EventKind } from "./EventKind";
 export { Subscriptions } from "./Subscriptions";
-export { default as Event } from "./Event";
 export { default as Tag } from "./Tag";
 export * from "./Links";
 

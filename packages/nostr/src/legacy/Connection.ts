@@ -2,7 +2,6 @@ import * as secp from "@noble/secp256k1";
 import { v4 as uuid } from "uuid";
 
 import { Subscriptions } from "./Subscriptions";
-import { default as NEvent } from "./Event";
 import { DefaultConnectTimeout } from "./Const";
 import { ConnectionStats } from "./ConnectionStats";
 import { RawEvent, RawReqFilter, TaggedRawEvent, u256 } from "./index";
@@ -11,7 +10,7 @@ import Nips from "./Nips";
 import { unwrap } from "./Util";
 
 export type CustomHook = (state: Readonly<StateSnapshot>) => void;
-export type AuthHandler = (challenge: string, relay: string) => Promise<NEvent | undefined>;
+export type AuthHandler = (challenge: string, relay: string) => Promise<RawEvent | undefined>;
 
 /**
  * Relay settings
@@ -232,11 +231,11 @@ export class Connection {
   /**
    * Send event on this connection
    */
-  SendEvent(e: NEvent) {
+  SendEvent(e: RawEvent) {
     if (!this.Settings.write) {
       return;
     }
-    const req = ["EVENT", e.ToObject()];
+    const req = ["EVENT", e];
     this._SendJson(req);
     this.Stats.EventsSent++;
     this._UpdateState();
@@ -245,7 +244,7 @@ export class Connection {
   /**
    * Send event on this connection and wait for OK response
    */
-  async SendAsync(e: NEvent, timeout = 5000) {
+  async SendAsync(e: RawEvent, timeout = 5000) {
     return new Promise<void>((resolve) => {
       if (!this.Settings.write) {
         resolve();
@@ -254,12 +253,12 @@ export class Connection {
       const t = setTimeout(() => {
         resolve();
       }, timeout);
-      this.EventsCallback.set(e.Id, () => {
+      this.EventsCallback.set(e.id, () => {
         clearTimeout(t);
         resolve();
       });
 
-      const req = ["EVENT", e.ToObject()];
+      const req = ["EVENT", e];
       this._SendJson(req);
       this.Stats.EventsSent++;
       this._UpdateState();
@@ -435,7 +434,7 @@ export class Connection {
         resolve();
       }, 10_000);
 
-      this.EventsCallback.set(authEvent.Id, (msg: boolean[]) => {
+      this.EventsCallback.set(authEvent.id, (msg: boolean[]) => {
         clearTimeout(t);
         authCleanup();
         if (msg.length > 3 && msg[2] === true) {
@@ -445,7 +444,7 @@ export class Connection {
         resolve();
       });
 
-      const req = ["AUTH", authEvent.ToObject()];
+      const req = ["AUTH", authEvent];
       this._SendJson(req);
       this.Stats.EventsSent++;
       this._UpdateState();
