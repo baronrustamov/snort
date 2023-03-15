@@ -44,6 +44,9 @@ export default function useLoginFeed() {
     if (!pubKey) return null;
 
     const b = new RequestBuilder("login");
+    b.withOptions({
+      leaveOpen: true,
+    });
     b.withFilter().authors([pubKey]).kinds([EventKind.ContactList]).limit(1);
     b.withFilter().kinds([EventKind.TextNote]).tag("p", [pubKey]).limit(1);
     b.withFilter().kinds([EventKind.DirectMessage]).tag("p", [pubKey]);
@@ -53,6 +56,9 @@ export default function useLoginFeed() {
   const subLists = useMemo(() => {
     if (!pubKey) return null;
     const b = new RequestBuilder("login:lists");
+    b.withOptions({
+      leaveOpen: true,
+    });
     b.withFilter()
       .authors([pubKey])
       .kinds([EventKind.PubkeyLists])
@@ -170,10 +176,10 @@ export default function useLoginFeed() {
     }
   }, [dispatch, listsFeed]);
 
-  const fRelays = useRelaysFeedFollows(follows);
+  /*const fRelays = useRelaysFeedFollows(follows);
   useEffect(() => {
     FollowsRelays.bulkSet(fRelays).catch(console.error);
-  }, [dispatch, fRelays]);
+  }, [dispatch, fRelays]);*/
 }
 
 async function decryptBlocked(raw: TaggedRawEvent, pubKey: HexKey, privKey?: HexKey) {

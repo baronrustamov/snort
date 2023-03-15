@@ -14,6 +14,9 @@ export default function useThreadFeed(id: u256) {
 
   const sub = useMemo(() => {
     const sub = new RequestBuilder(`thread:${id.substring(0, 8)}`);
+    sub.withOptions({
+      leaveOpen: true,
+    });
     sub.withFilter().ids(trackingEvents);
     sub
       .withFilter()

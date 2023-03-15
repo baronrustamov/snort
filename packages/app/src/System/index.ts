@@ -20,6 +20,18 @@ export {
   Query,
 };
 
+export interface SystemSnapshot {
+  queries: Array<{
+    id: string;
+    filters: Array<RawReqFilter>;
+    subFilters: Array<RawReqFilter>;
+    closing: boolean;
+  }>;
+}
+
+export type HookSystemSnapshotRelease = () => void;
+export type HookSystemSnapshot = () => void;
+
 /**
  * Manages nostr content retrieval system
  */
@@ -44,8 +56,31 @@ export class NostrSystem {
    */
   HandleAuth?: AuthHandler;
 
+  /**
+   * State change hooks
+   */
+  #stateHooks: Array<HookSystemSnapshot> = [];
+
+  /**
+   * Current snapshot of the system
+   */
+  #snapshot: Readonly<SystemSnapshot> = { queries: [] };
+
   constructor() {
     this.Sockets = new Map();
+    this.#cleanup();
+  }
+
+  hook(cb: HookSystemSnapshot): HookSystemSnapshotRelease {
+    this.#stateHooks.push(cb);
+    return () => {
+      const idx = this.#stateHooks.findIndex(a => a === cb);
+      this.#stateHooks.splice(idx, 1);
+    };
+  }
+
+  getSnapshot(): Readonly<SystemSnapshot> {
+    return this.#snapshot;
   }
 
   /**
@@ -84,8 +119,10 @@ export class NostrSystem {
       if (f) {
         f.eose(true);
       }
+      if (!q.leaveOpen) {
+        c._SendJson(["CLOSE", sub]);
+      }
     }
-    c._SendJson(["CLOSE", sub]);
   }
 
   OnEvent(sub: string, ev: TaggedRawEvent) {
@@ -178,13 +215,14 @@ export class NostrSystem {
 
     if (!req) return new type();
 
-    const filters = req.build();
     if (this.Queries.has(req.id)) {
+      const filters = req.build();
       const q = unwrap(this.Queries.get(req.id));
       q.unCancel();
 
       const diff = diffFilters(q.request.filters, filters);
       if (!diff.changed) {
+        this.#changed();
         return unwrap(this.Feeds.get(req.id)) as Readonly<T>;
       } else {
         const subQ = new Query(`${q.id}-${q.subQueries.length + 1}`, {
@@ -195,26 +233,31 @@ export class NostrSystem {
         q.request.filters = filters;
         const f = unwrap(this.Feeds.get(req.id));
         f.eose(false);
-        this.SendQuery(subQ.id, subQ.request.filters);
+        this.SendQuery(subQ, subQ.request.filters);
+        this.#changed();
         return f as Readonly<T>;
       }
     } else {
-      return this.AddQuery<T>(type, req.id, filters);
+      return this.AddQuery<T>(type, req);
     }
   }
 
-  AddQuery<T extends NoteStore>(type: { new (): T }, id: string, filters: Array<RawReqFilter>): T {
-    const q = new Query(id, {
-      filters: filters,
+  AddQuery<T extends NoteStore>(type: { new (): T }, rb: RequestBuilder): T {
+    const q = new Query(rb.id, {
+      filters: rb.build(),
       started: unixNowMs(),
       finished: 0,
     });
+    if (rb.options?.leaveOpen) {
+      q.leaveOpen = rb.options.leaveOpen;
+    }
 
-    this.Queries.set(id, q);
+    this.Queries.set(rb.id, q);
     const store = new type();
-    this.Feeds.set(id, store);
+    this.Feeds.set(rb.id, store);
 
-    this.SendQuery(q.id, q.request.filters);
+    this.SendQuery(q, q.request.filters);
+    this.#changed();
     return store;
   }
 
@@ -226,9 +269,9 @@ export class NostrSystem {
     }
   }
 
-  SendQuery(id: string, filters: Array<RawReqFilter>) {
+  SendQuery(q: Query, filters: Array<RawReqFilter>) {
     for (const [, s] of this.Sockets) {
-      s._SendJson(["REQ", id, ...filters]);
+      q.sendToRelay(s);
     }
   }
 
@@ -249,6 +292,40 @@ export class NostrSystem {
     await c.Connect();
     await c.SendAsync(ev);
     c.Close();
+  }
+
+  #changed() {
+    this.#snapshot = Object.freeze({
+      queries: [...this.Queries.values()].map(a => {
+        return {
+          id: a.id,
+          filters: a.request.filters,
+          closing: a.closing,
+          subFilters: a.subQueries.map(a => a.request.filters).flat(),
+        };
+      }),
+    });
+    for (const h of this.#stateHooks) {
+      h();
+    }
+  }
+
+  #cleanup() {
+    const now = unixNowMs();
+    let changed = false;
+    for (const [k, v] of this.Queries) {
+      if (v.closingAt && v.closingAt < now) {
+        if (v.leaveOpen) {
+          v.sendClose();
+        }
+        this.Queries.delete(k);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.#changed();
+    }
+    setTimeout(() => this.#cleanup(), 1_000);
   }
 }
 

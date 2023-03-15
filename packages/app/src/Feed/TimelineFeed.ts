@@ -5,8 +5,7 @@ import { EventKind, u256 } from "@snort/nostr";
 import { unixNow, unwrap, tagFilterOfTextRepost } from "Util";
 import { RootState } from "State/Store";
 import { UserPreferences } from "State/Login";
-import { FlatNoteStore, RequestBuilder, System } from "System";
-import useNoteStore from "Hooks/useNoteStore";
+import { FlatNoteStore, RequestBuilder } from "System";
 import useRequestBuilder from "Hooks/useRequestBuilder";
 
 export interface TimelineFeedOptions {
@@ -80,6 +79,9 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
         // copy properties of main sub but with limit 0
         // this will put latest directly into main feed
         rb.builder
+          .withOptions({
+            leaveOpen: true,
+          })
           .withFilter()
           .authors(rb.filter.filter.authors)
           .kinds(rb.filter.filter.kinds)
@@ -98,14 +100,16 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
   const subRealtime = useMemo(() => {
     const rb = createBuilder();
     if (rb && !pref.autoShowLatest) {
+      rb.builder.withOptions({
+        leaveOpen: true,
+      });
       rb.builder.id = `${rb.builder.id}:latest`;
       rb.filter.limit(1).since(unixNow());
     }
     return rb?.builder ?? null;
   }, [pref.autoShowLatest, createBuilder]);
 
-  const qLatest = System.Query<FlatNoteStore>(FlatNoteStore, subRealtime);
-  const latest = useNoteStore(qLatest);
+  const latest = useRequestBuilder<FlatNoteStore>(FlatNoteStore, subRealtime);
 
   useEffect(() => {
     // clear store if changing relays

@@ -53,6 +53,10 @@ export class RequestBuilder {
     return this.#builders.length;
   }
 
+  get options() {
+    return this.#options;
+  }
+
   withFilter() {
     const ret = new RequestFilterBuilder();
     this.#builders.push(ret);

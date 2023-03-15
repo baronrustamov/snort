@@ -58,7 +58,9 @@ export default function RootPage() {
 
   useEffect(() => {
     if (location.pathname === "/") {
-      navigate(unwrap(preferences.defaultRootTab ?? tab.data));
+      navigate(unwrap(preferences.defaultRootTab ?? tab.data), {
+        replace: true,
+      });
     }
   }, [location]);
 

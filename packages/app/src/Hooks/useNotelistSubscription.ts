@@ -29,7 +29,7 @@ export default function useNotelistSubscription(pubkey: HexKey | undefined, l: L
   }, [listStore.data, isMe, defaultIds]);
 
   const esub = useMemo(() => {
-    if (!pubkey) return null;
+    if (!pubkey || etags.length === 0) return null;
     const s = new RequestBuilder(`${l}-notes:${pubkey.slice(0, 12)}`);
     s.withFilter().kinds([EventKind.TextNote]).ids(etags);
     if (etags.length > 0 && preferences.enableReactions) {

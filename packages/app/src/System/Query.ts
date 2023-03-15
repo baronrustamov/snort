@@ -1,4 +1,4 @@
-import { RawReqFilter } from "@snort/nostr";
+import { Connection, RawReqFilter } from "@snort/nostr";
 import { unixNowMs } from "Util";
 
 export interface QueryRequest {
@@ -29,13 +29,16 @@ export class Query {
   /**
    * Which relays this query has already been executed on
    */
-  sentToRelays: Array<string> = [];
+  #sentToRelays: Array<Readonly<Connection>> = [];
 
   /**
-   * Which relays we want to send this query on
+   * Leave the query open until its removed
    */
-  shouldSendTo: Array<string> = [];
+  leaveOpen = false;
 
+  /**
+   * Time when this query can be removed
+   */
   #cancelTimeout?: number;
 
   constructor(id: string, request: QueryRequest) {
@@ -47,11 +50,26 @@ export class Query {
     return this.#cancelTimeout !== undefined;
   }
 
+  get closingAt() {
+    return this.#cancelTimeout;
+  }
+
   cancel() {
     this.#cancelTimeout = unixNowMs() + 5_000;
   }
 
   unCancel() {
     this.#cancelTimeout = undefined;
+  }
+
+  sendToRelay(c: Connection) {
+    c._SendJson(["REQ", this.id, ...this.request.filters]);
+    this.#sentToRelays.push(c);
+  }
+
+  sendClose() {
+    for (const c of this.#sentToRelays) {
+      c._SendJson(["CLOSE", this.id]);
+    }
   }
 }
