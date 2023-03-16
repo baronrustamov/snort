@@ -1,16 +1,50 @@
-import { useEffect } from "react";
-import { RequestBuilder, System, NoteStore } from "System";
-import useNoteStore from "Hooks/useNoteStore";
+import { useSyncExternalStore } from "react";
+import { RequestBuilder, System } from "System";
+import { FlatNoteStore, NoteStore, StoreSnapshot } from "System/NoteCollection";
+import { unwrap } from "Util";
 
-function useRequestBuilder<T extends NoteStore>(type: { new (): T }, rb: RequestBuilder | null) {
-  const q = System.Query<T>(type, rb);
-  const data = useNoteStore(q);
-  useEffect(() => {
-    if (rb) {
-      return () => System.CancelQuery(rb.id);
+const useRequestBuilder = <TStore extends NoteStore, TSnapshot = ReturnType<TStore["getSnapshotData"]>>(
+  type: { new (): TStore },
+  rb: RequestBuilder | null,
+  debounced?: number
+) => {
+  const subscribe = (onChanged: () => void) => {
+    const store = System.Query<TStore>(type, rb);
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const release = store.hook(() => {
+      if (!t) {
+        t = setTimeout(() => {
+          clearTimeout(t);
+          t = undefined;
+          onChanged();
+        }, debounced ?? 500);
+      }
+    });
+
+    return () => {
+      if (rb?.id) {
+        System.CancelQuery(rb.id);
+      }
+      release();
+    };
+  };
+  const emptyStore = {
+    data: undefined,
+    store: new FlatNoteStore(),
+  } as StoreSnapshot<TSnapshot>;
+  const getState = (): StoreSnapshot<TSnapshot> => {
+    if (rb?.id) {
+      const feed = System.GetFeed(rb.id);
+      if (feed) {
+        return unwrap(feed).snapshot as StoreSnapshot<TSnapshot>;
+      }
     }
-  }, [rb]);
-  return data;
-}
+    return emptyStore;
+  };
+  return useSyncExternalStore<StoreSnapshot<TSnapshot>>(
+    v => subscribe(v),
+    () => getState()
+  );
+};
 
 export default useRequestBuilder;

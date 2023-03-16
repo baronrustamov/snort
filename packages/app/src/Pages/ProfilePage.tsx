@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useIntl, FormattedMessage } from "react-intl";
 import { useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router-dom";
-import { NostrPrefix } from "@snort/nostr";
+import { EventKind, NostrPrefix } from "@snort/nostr";
 
 import { getReactions, unwrap } from "Util";
 import { formatShort } from "Number";
@@ -184,16 +184,18 @@ export default function ProfilePage() {
         return (
           <>
             <div className="main-content">
-              {pinned.map(n => {
-                return (
-                  <Note
-                    key={`pinned-${n.id}`}
-                    data={n}
-                    related={getReactions(pinned, n.id)}
-                    options={{ showTime: false, showPinned: true, canUnpin: id === loginPubKey }}
-                  />
-                );
-              })}
+              {pinned
+                .filter(a => a.kind === EventKind.TextNote)
+                .map(n => {
+                  return (
+                    <Note
+                      key={`pinned-${n.id}`}
+                      data={n}
+                      related={getReactions(pinned, n.id)}
+                      options={{ showTime: false, showPinned: true, canUnpin: id === loginPubKey }}
+                    />
+                  );
+                })}
             </div>
             <Timeline
               key={id}

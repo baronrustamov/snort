@@ -45,7 +45,7 @@ export default function useLoginFeed() {
     b.withOptions({
       leaveOpen: true,
     });
-    b.withFilter().authors([pubKey]).kinds([EventKind.ContactList]).limit(1);
+    b.withFilter().authors([pubKey]).kinds([EventKind.ContactList, EventKind.DirectMessage]);
     b.withFilter().kinds([EventKind.TextNote]).tag("p", [pubKey]).limit(1);
     b.withFilter().kinds([EventKind.DirectMessage]).tag("p", [pubKey]);
     return b;

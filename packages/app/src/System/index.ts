@@ -265,7 +265,6 @@ export class NostrSystem {
     const q = this.Queries.get(sub);
     if (q) {
       q.cancel();
-      console.debug("Cancel", q);
     }
   }
 
@@ -319,6 +318,8 @@ export class NostrSystem {
           v.sendClose();
         }
         this.Queries.delete(k);
+        this.Feeds.delete(k);
+        console.debug("Removed:", k);
         changed = true;
       }
     }

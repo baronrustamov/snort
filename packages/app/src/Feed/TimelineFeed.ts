@@ -7,6 +7,7 @@ import { RootState } from "State/Store";
 import { UserPreferences } from "State/Login";
 import { FlatNoteStore, RequestBuilder } from "System";
 import useRequestBuilder from "Hooks/useRequestBuilder";
+import useTimelineWindow from "Hooks/useTimelineWindow";
 
 export interface TimelineFeedOptions {
   method: "TIME_RANGE" | "LIMIT_UNTIL";
@@ -23,10 +24,9 @@ export interface TimelineSubject {
 export type TimelineFeed = ReturnType<typeof useTimelineFeed>;
 
 export default function useTimelineFeed(subject: TimelineSubject, options: TimelineFeedOptions) {
-  const [now] = useState<number>(unixNow());
-  const [window] = useState<number>(options.window ?? 60 * 60);
-  const [until, setUntil] = useState<number>(now);
-  const [since, setSince] = useState<number>(now - window);
+  const { now, since, until, older, setUntil } = useTimelineWindow({
+    window: options.window,
+  });
   const [trackingEvents, setTrackingEvent] = useState<u256[]>([]);
   const [trackingParentEvents, setTrackingParentEvents] = useState<u256[]>([]);
   const pref = useSelector<RootState, UserPreferences>(s => s.login.preferences);
@@ -89,7 +89,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
           .tag("t", rb.filter.filter["#t"])
           .search(rb.filter.filter.search)
           .limit(1)
-          .since(unixNow());
+          .since(now);
       }
     }
     return rb?.builder ?? null;
@@ -104,7 +104,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
         leaveOpen: true,
       });
       rb.builder.id = `${rb.builder.id}:latest`;
-      rb.filter.limit(1).since(unixNow());
+      rb.filter.limit(1).since(now);
     }
     return rb?.builder ?? null;
   }, [pref.autoShowLatest, createBuilder]);
@@ -180,8 +180,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
           const oldest = main.data.reduce((acc, v) => (acc = v.created_at < acc ? v.created_at : acc), unixNow());
           setUntil(oldest);
         } else {
-          setUntil(s => s - window);
-          setSince(s => s - window);
+          older();
         }
       }
     },
