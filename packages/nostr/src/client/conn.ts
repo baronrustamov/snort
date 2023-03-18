@@ -1,4 +1,4 @@
-import { NostrError } from "../common"
+import { NostrError, parseJson } from "../common"
 import { SubscriptionId } from "."
 import { EventId, RawEvent } from "../event"
 import WebSocket from "isomorphic-ws"
@@ -320,12 +320,4 @@ function parseEventData(json: { [key: string]: unknown }): RawEvent {
     throw new NostrError(`invalid event: ${JSON.stringify(json)}`)
   }
   return json as unknown as RawEvent
-}
-
-function parseJson(data: string) {
-  try {
-    return JSON.parse(data)
-  } catch (e) {
-    throw new NostrError(`invalid event json: ${data}`)
-  }
 }

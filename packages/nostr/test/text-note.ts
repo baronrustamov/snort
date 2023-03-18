@@ -1,13 +1,8 @@
-import {
-  createTextNote,
-  EventKind,
-  signEvent,
-  TextNote,
-  Unsigned,
-} from "../src/event"
+import { EventKind, signEvent, Unsigned } from "../src/event"
 import { parsePublicKey } from "../src/crypto"
 import assert from "assert"
 import { setup } from "./setup"
+import { createTextNote, TextNote } from "../src/event/text"
 
 describe("text note", () => {
   const note = "hello world"

@@ -1,7 +1,8 @@
-import { createDirectMessage, EventKind, signEvent } from "../src/event"
+import { EventKind, signEvent } from "../src/event"
 import { parsePublicKey } from "../src/crypto"
 import assert from "assert"
 import { setup } from "./setup"
+import { createDirectMessage } from "../src/event/direct-message"
 
 describe("dm", () => {
   const message = "for your eyes only"
