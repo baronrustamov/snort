@@ -8,7 +8,7 @@ import { Filters } from "../filters"
  * The connection to a relay. This is the lowest layer of the nostr protocol.
  * The only responsibility of this type is to send and receive
  * well-formatted nostr messages on the underlying websocket. All other details of the protocol
- * are handled by `Nostr`.
+ * are handled by `Nostr`. This type does not know anything about even semantics.
  *
  * @see Nostr
  */
