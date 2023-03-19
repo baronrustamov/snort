@@ -219,7 +219,7 @@ export default function Layout() {
       {!shouldHideHeader && (
         <header>
           <div className="logo" onClick={() => navigate("/")}>
-            Snort
+            Semaphore
           </div>
           <div>
             {publicKey ? (

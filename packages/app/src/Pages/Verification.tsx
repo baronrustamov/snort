@@ -9,9 +9,9 @@ import "./Verification.css";
 
 export const services = [
   {
-    name: "Snort",
+    name: "Semaphore",
     service: `${ApiHost}/api/v1/n5sp`,
-    link: "https://snort.social/",
+    link: "https://semaphore.life/",
     supportLink: "https://snort.social/help",
     about: <FormattedMessage {...messages.SnortSocialNip} />,
   },
