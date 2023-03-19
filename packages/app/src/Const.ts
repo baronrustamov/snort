@@ -18,12 +18,12 @@ export const VoidCatHost = "https://void.cat";
 /**
  * Kierans pubkey
  */
-export const KieranPubKey = "npub1v0lxxxxutpvrelsksy8cdhgfux9l6a42hsj2qzquu2zk7vc9qnkszrqj49";
+export const KieranPubKey = "npub1m6az5zc2c5hzalker52x7zkzht6qs6yvj9l4pyjgvw9welfaf7yqz6mlgn";
 
 /**
  * Official snort account
  */
-export const SnortPubKey = "npub1sn0rtcjcf543gj4wsg7fa59s700d5ztys5ctj0g69g2x6802npjqhjjtws";
+export const SnortPubKey = "npub1m6az5zc2c5hzalker52x7zkzht6qs6yvj9l4pyjgvw9welfaf7yqz6mlgn";
 
 /**
  * Websocket re-connect timeout
@@ -39,6 +39,7 @@ export const ProfileCacheExpire = 1_000 * 60 * 30;
  * Default bootstrap relays
  */
 export const DefaultRelays = new Map<string, RelaySettings>([
+  ["wss://relay.semaphore.life", { read: true, write: true }],
   ["wss://relay.snort.social", { read: true, write: true }],
   ["wss://nostr.wine", { read: true, write: false }],
   ["wss://nos.lol", { read: true, write: false }],
@@ -47,31 +48,14 @@ export const DefaultRelays = new Map<string, RelaySettings>([
 /**
  * Default search relays
  */
-export const SearchRelays = new Map<string, RelaySettings>([["wss://relay.nostr.band", { read: true, write: false }]]);
+export const SearchRelays = new Map<string, RelaySettings>([["wss://relay.semaphore.life", { read: true, write: false }]]);
 
 /**
  * List of recommended follows for new users
  */
 export const RecommendedFollows = [
-  "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2", // jack
-  "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d", // fiatjaf
-  "020f2d21ae09bf35fcdfb65decf1478b846f5f728ab30c5eaabcd6d081a81c3e", // adam3us
-  "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93", // gigi
-  "63fe6318dc58583cfe16810f86dd09e18bfd76aabc24a0081ce2856f330504ed", // Kieran
-  "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245", // jb55
-  "e33fe65f1fde44c6dc17eeb38fdad0fceaf1cae8722084332ed1e32496291d42", // wiz
-  "00000000827ffaa94bfea288c3dfce4422c794fbb96625b6b31e9049f729d700", // cameri
-  "A341F45FF9758F570A21B000C17D4E53A3A497C8397F26C0E6D61E5ACFFC7A98", // Saylor
-  "E88A691E98D9987C964521DFF60025F60700378A4879180DCBBB4A5027850411", // NVK
-  "C4EABAE1BE3CF657BC1855EE05E69DE9F059CB7A059227168B80B89761CBC4E0", // jackmallers
-  "85080D3BAD70CCDCD7F74C29A44F55BB85CBCD3DD0CBB957DA1D215BDB931204", // preston
-  "C49D52A573366792B9A6E4851587C28042FB24FA5625C6D67B8C95C8751ACA15", // holdonaut
-  "83E818DFBECCEA56B0F551576B3FD39A7A50E1D8159343500368FA085CCD964B", // jeffbooth
-  "3F770D65D3A764A9C5CB503AE123E62EC7598AD035D836E2A810F3877A745B24", // DerekRoss
-  "472F440F29EF996E92A186B8D320FF180C855903882E59D50DE1B8BD5669301E", // MartyBent
-  "1577e4599dd10c863498fe3c20bd82aafaf829a595ce83c5cf8ac3463531b09b", // yegorpetrov
-  "04c915daefee38317fa734444acee390a8269fe5810b2241e5e6dd343dfbecc9", // ODELL
-  "7fa56f5d6962ab1e3cd424e758c3002b8665f7b0d8dcee9fe9e288d7751ac194", // verbiricha
+  "npub1m6az5zc2c5hzalker52x7zkzht6qs6yvj9l4pyjgvw9welfaf7yqz6mlgn", // V
+  "npub15pujdvthhea5rk86a5fs20549xrsqksf77eefcphu4m79ldpmgcsaumkgm", // I
 ];
 
 /**
