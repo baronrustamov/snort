@@ -4,6 +4,10 @@ WORKDIR /app
 COPY package.json yarn.lock .
 COPY packages/app/package.json packages/app/
 COPY packages/nostr/package.json packages/nostr/
+
+RUN yarn workspace @snort/app intl-extract
+RUN yarn workspace @snort/app intl-compile
+
 RUN yarn install --network-timeout 1000000
 
 COPY . .
