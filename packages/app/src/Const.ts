@@ -40,15 +40,14 @@ export const ProfileCacheExpire = 1_000 * 60 * 30;
  */
 export const DefaultRelays = new Map<string, RelaySettings>([
   ["wss://relay.semaphore.life", { read: true, write: true }],
-  ["wss://relay.snort.social", { read: true, write: true }],
-  ["wss://nostr.wine", { read: true, write: false }],
-  ["wss://nos.lol", { read: true, write: false }],
+  ["wss://relay.snort.social", { read: true, write: false }],
+  ["wss://nostr.wine", { read: true, write: false }]
 ]);
 
 /**
  * Default search relays
  */
-export const SearchRelays = new Map<string, RelaySettings>([["wss://relay.semaphore.life", { read: true, write: false }]]);
+export const SearchRelays = new Map<string, RelaySettings>([["wss://relay.semaphore.life", { read: true, write: true }]]);
 
 /**
  * List of recommended follows for new users
