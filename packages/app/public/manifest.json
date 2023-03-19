@@ -1,7 +1,7 @@
 {
-  "short_name": "Snort",
-  "name": "snort.social - Nostr interface",
-  "description": "Fast nostr web ui",
+  "short_name": "Semaphore",
+  "name": "Semaphore.life - Nostr interface",
+  "description": "Semaphore — Fast nostr web ui",
   "icons": [
     {
       "src": "nostrich_256.png",
